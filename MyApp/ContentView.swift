@@ -15,6 +15,8 @@ struct ContentView: View {
     @State private var newText = ""            // text typed in the input
     @State private var isLoading = true        // true during the first load
     @State private var errorMessage: String?   // shown in an alert if a request fails
+    @State private var editingTask: TaskItem?  // task currently being edited
+    @State private var editText = ""           // text in the edit box
 
     // Counts shown in the header and section title
     private var completedCount: Int { tasks.filter { $0.done }.count }
@@ -89,7 +91,11 @@ struct ContentView: View {
                     ForEach(tasks) { task in
                         TaskRow(task: task,
                                 onToggle: { toggle(task) },
-                                onDelete: { delete(task) })
+                                onDelete: { delete(task) },
+                                onEdit: {
+                                    editingTask = task
+                                    editText = task.text
+                                })
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
@@ -110,6 +116,14 @@ struct ContentView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
+        }
+        // EDIT: popup with a text field to rename the task
+        .alert("Edit task",
+               isPresented: Binding(get: { editingTask != nil },
+                                    set: { if !$0 { editingTask = nil } })) {
+            TextField("Task", text: $editText)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") { saveEdit() }
         }
     }
 
@@ -152,6 +166,23 @@ struct ContentView: View {
         }
     }
 
+    // EDIT: send the new text to the server, then swap in the updated task
+    private func saveEdit() {
+        guard let task = editingTask else { return }
+        let text = editText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text != task.text else { return } // ignore empty or unchanged
+        Task {
+            do {
+                let updated = try await TaskAPI.editTask(id: task.id, text: text)
+                if let index = tasks.firstIndex(where: { $0.id == task.id }) {
+                    tasks[index] = updated
+                }
+            } catch {
+                errorMessage = "Could not edit task."
+            }
+        }
+    }
+
     // DELETE: remove the task on the server, then remove it from the list
     private func delete(_ task: TaskItem) {
         Task {
@@ -165,11 +196,12 @@ struct ContentView: View {
     }
 }
 
-// One task card: round checkbox, task text, trash button
+// One task card: round checkbox, task text (tap to edit), trash button
 struct TaskRow: View {
     let task: TaskItem
     let onToggle: () -> Void
     let onDelete: () -> Void
+    let onEdit: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
@@ -181,11 +213,13 @@ struct TaskRow: View {
             }
             .buttonStyle(.borderless) // so tapping one button doesn't trigger the whole row
 
-            // Task text: strikethrough and gray when completed
+            // Task text: strikethrough and gray when completed; tap to edit
             Text(task.text)
                 .strikethrough(task.done)
                 .foregroundStyle(task.done ? Color.textGray : Color.textDark)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())     // makes the whole text area tappable
+                .onTapGesture(perform: onEdit) // opens the edit popup
 
             // Delete button with the trash icon from the Figma design
             Button(action: onDelete) {

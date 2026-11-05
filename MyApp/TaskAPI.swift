@@ -28,7 +28,15 @@ struct TaskAPI {
         let (data, _) = try await URLSession.shared.data(for: request)
         return try JSONDecoder().decode(TaskItem.self, from: data)
     }
-
+    // EDIT: PUT the new text, the server returns the updated task
+    static func editTask(id: String, text: String) async throws -> TaskItem {
+        var request = URLRequest(url: baseURL.appendingPathComponent(id))
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["text": text])
+        let (data, _) = try await URLSession.shared.data(for: request)
+        return try JSONDecoder().decode(TaskItem.self, from: data)
+    }
     // DELETE: remove the task from MongoDB
     static func deleteTask(id: String) async throws {
         var request = URLRequest(url: baseURL.appendingPathComponent(id))
